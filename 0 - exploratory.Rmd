@@ -1,0 +1,35 @@
+---
+title: "0 - exploratory"
+output: html_document
+---
+
+## Install libraries
+
+```{r echo = F}
+library(tidyverse)
+library(readxl)
+```
+
+## Investigate
+
+```{r}
+survey_tbl <- read_excel("./DT.xlsx")
+
+survey_tbl
+
+survey_tbl %>% select(Age_Years,Year_born)
+
+
+```
+
+## Create indicator variables for the Conditions 
+
+```{r}
+survey_tbl <- survey_tbl %>% 
+  mutate(Control = ifelse(str_detect(Group,"Control"),1,0),
+         Condition_Death = ifelse(str_detect(Group,"Death"),1,0),
+         Condition_SM = ifelse(str_detect(Group,"Sm_"),1,0),
+         Condition_SocialLoss = ifelse(str_detect(Group,"SocialLoss"),1,0))
+
+survey_tbl %>% select(Control,Condition_Death,Condition_SM,Condition_SocialLoss)
+```
