@@ -8,28 +8,154 @@ output: html_document
 ```{r echo = F}
 library(tidyverse)
 library(readxl)
+library(reshape2)
+library(ggplot2)
+library(ggrepel)
+library(quanteda)
+library(tidytext)
+library(tokenizers)
+library(stringr)
 ```
 
 ## Investigate
 
 ```{r}
-survey_tbl <- read_excel("./DT.xlsx")
-
-survey_tbl
-
-survey_tbl %>% select(Age_Years,Year_born)
-
-
+survey_tbl <- read_excel("./DT.xlsx", col_types = c(rep("guess",2),"date",rep("guess",119)))
 ```
 
 ## Create indicator variables for the Conditions 
 
 ```{r}
 survey_tbl <- survey_tbl %>% 
-  mutate(Control = ifelse(str_detect(Group,"Control"),1,0),
-         Condition_Death = ifelse(str_detect(Group,"Death"),1,0),
-         Condition_SM = ifelse(str_detect(Group,"Sm_"),1,0),
-         Condition_SocialLoss = ifelse(str_detect(Group,"SocialLoss"),1,0))
-
-survey_tbl %>% select(Control,Condition_Death,Condition_SM,Condition_SocialLoss)
+  mutate(control = ifelse(str_detect(Group,"Control"),1,0),
+         condition_death = ifelse(str_detect(Group,"Death"),1,0),
+         condition_sm = ifelse(str_detect(Group,"Sm_"),1,0),
+         condition_socialloss = ifelse(str_detect(Group,"SocialLoss"),1,0))
 ```
+
+## Create indicator variables for the treatments
+
+```{r}
+survey_tbl <- survey_tbl %>% 
+  mutate(treatment_prevention = ifelse(str_detect(Group,"Prevention"),1,0),
+         treatment_promotion = ifelse(str_detect(Group,"Promotion"),1,0),
+         treatment_loved = ifelse(str_detect(Group,"Loved"),1,0),
+         treatment_others = ifelse(str_detect(Group,"Others"),1,0),
+         treatment_own = ifelse(str_detect(Group,"Own"),1,0))
+```
+
+## Create aggregate varialbles
+
+```{r}
+survey_tbl <- survey_tbl %>% rowwise() %>%
+  mutate(reliable_social_desirability = mean(c_across(contains("Social_Desirability"))),
+         reliable_believability = mean(c_across(contains("Believability_"))),
+         reliable_vaccinate1 = mean(c_across(contains("vaccinate_"))),
+         reliable_vaccinate2 = mean(c_across(contains("VaccinatiLikelihood"))),
+         reliable_cognitive_attitude1 = mean(c_across(contains("Cognitive_Attitude1_"))),
+         reliable_cognitive_attitude2 = mean(c_across(contains("Cognitive_Attitude2_"))),
+         reliable_affective_attitude = mean(c_across(contains("Affective_Attitude"))),
+         reliable_situationalreactanc = mean(c_across(contains("Situationalreactanc"))),
+         reliable_vaccine_hesitancy1 = mean(c_across(contains("Vaccine_hesitancy1_"))),
+         reliable_vaccine_hesitancy2 = mean(c_across(contains("Vaccine_hesitancy2_"))),
+         reliable_attention_alignment = mean(c_across(contains("Attention_Alignment1"))),
+         reliable_vaccine_self_esteem = mean(c_across(contains("self_esteem_"))),
+         reliable_perceived_vulnerability = mean(c_across(contains("Perci_Vulnerability4"))),
+         )
+
+survey_tbl <- survey_tbl %>%
+  select(-Year_born,-contains(c("Social_Desirability","PANAS","Believability_","vaccinate_","VaccinatiLikelihood","Cognitive_Attitude1_","Cognitive_Attitude2_","Affective_Attitude","Situationalreactanc","Vaccine_hesitancy1_","Vaccine_hesitancy2_","Attention_Alignment1","self_esteem_","Perci_Vulnerability4")))
+```
+
+## Start creating quantitaive text metrics
+
+```{r}
+#Indicator of 3 or more sentenses
+survey_tbl <- survey_tbl %>% mutate(sentences3_1 = ifelse(`Death Thoughts1` %>% str_split('[.!?]') %>% sapply(length)-1>=3,1,0),
+                                    sentences3_2 = ifelse(`Death Thoughts2` %>% str_split('[.!?]') %>% sapply(length)-1>=3,1,0))
+#Word count
+survey_tbl <- survey_tbl %>% mutate(wordcount1 = (`Death Thoughts1` %>% str_split('\\b') %>% sapply(length)-1)/2,
+                                    wordcount1 = (`Death Thoughts2` %>% str_split('\\b') %>% sapply(length)-1)/2)
+```
+
+```{r}
+#Most common words
+commonwords <- gsub("[[:punct:][:blank:]]+", " ", survey_tbl$`Death Thoughts1`) %>% tokenize_word() %>% unlist() %>% data_frame(word = .) %>% filter(word != " ") %>% count(word, sort=T) 
+
+#Most common bi- trigrams
+commonngrams <- tokenize_ngrams(gsub("[[:punct:][:blank:]]+", " ", survey_tbl$`Death Thoughts1`), n = 2L, n_min = 2L, simplify = TRUE) %>%
+  unlist() %>%
+  data_frame(ngram = .) %>%
+  drop_na %>%
+  count(ngram, sort = TRUE) 
+
+survey_tbl <- survey_tbl %>%
+  mutate(cliche = str_detect(`Death Thoughts1`,commonwords$word))
+```
+
+```{r}
+attach(survey_tbl)
+```
+
+## Correlations within the data
+
+```{r}
+cor(Share_Freq,Intentions_1) #share frequency, read article
+cor(Share_Freq,Intentions_2) #share frequency, share article
+cor(Share_Freq,Intentions_3) #share frequency, like article
+```
+
+```{r}
+survey_tbl %>% select(-ID) %>%  select_if(is.numeric) %>% cor() %>% melt() %>% 
+  ggplot(aes(Var1,Var2,fill=value)) + 
+  geom_tile() +
+  theme(axis.text.x = element_text(angle = 90))
+
+ggsave("correlation1.png", width=12)
+
+```
+
+```{r}
+survey_tbl %>% select(-ID) %>%  select_if(is.numeric) %>% cor() %>% melt() %>% drop_na() %>% 
+  ggplot(aes(Var1,Var2,fill=value)) + 
+  geom_tile() +
+  theme(axis.text.x = element_text(angle = 90))
+
+ggsave("correlation1 - without NA.png", width=12, height = 12)
+```
+
+```{r}
+rbind(survey_tbl %>% select(-ID) %>%  select_if(is.numeric) %>% cor() %>% melt() %>% filter(Var1 != Var2) %>% group_by(Var2) %>%
+  top_n(3),
+survey_tbl %>% select(-ID) %>%  select_if(is.numeric) %>% cor() %>% melt() %>% filter(Var1 != Var2) %>% group_by(Var2) %>%
+  top_n(-3)) %>% arrange(Var2, desc(value)) %>% select(Var2,Var1,value)
+```
+
+Intentions_1	Attention_Alignment2	-0.29595146
+Intentions_1	If you could, how likely are you to do the following with this news headline? - Read the full article
+Attention_Alignment2	I do not support the position advocated in the news headline
+
+
+Self reported, more likely to read the full article if you also disagree with the statement that you do not support the position advocated within it.  ?Confirmation bias?
+
+Intentions_ all appear to be indicative of a desire to engage with the article is some social capacity.  Therefore, correlations are expected here.
+
+Intentions_2	reliable_believability	0.58744937
+If beleiveable more likely to share.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
