@@ -80,9 +80,9 @@ survey_tbl <- survey_tbl %>% mutate(wordcount1 = (`Death Thoughts1` %>% str_spli
 
 ```{r}
 #Most common words
-commonwords <- gsub("[[:punct:][:blank:]]+", " ", survey_tbl$`Death Thoughts1`) %>% tokenize_word() %>% unlist() %>% data_frame(word = .) %>% filter(word != " ") %>% count(word, sort=T) 
+commonwords <- gsub("[[:punct:][:blank:]]+", " ", survey_tbl$`Death Thoughts1`) %>% tokenize_word() %>% unlist() %>% data_frame(word = .) %>% filter(word != " ") %>% count(word, sort=TRUE) 
 
-#Most common bi- trigrams
+#Most common bi
 commonngrams <- tokenize_ngrams(gsub("[[:punct:][:blank:]]+", " ", survey_tbl$`Death Thoughts1`), n = 2L, n_min = 2L, simplify = TRUE) %>%
   unlist() %>%
   data_frame(ngram = .) %>%
@@ -90,8 +90,18 @@ commonngrams <- tokenize_ngrams(gsub("[[:punct:][:blank:]]+", " ", survey_tbl$`D
   count(ngram, sort = TRUE) 
 
 survey_tbl <- survey_tbl %>%
-  mutate(cliche = str_detect(`Death Thoughts1`,commonwords$word))
+  mutate(cliche1 = sum(commonwords[str_detect(`Death Thoughts1`,commonwords$word),"n"])) #mask to find n
+
+survey_tbl$cliche1 %>% hist()
 ```
+
+```{r}
+survey_tbl <- survey_tbl %>%
+  mutate(cliche2 = sum(commonngrams[str_detect(`Death Thoughts1`,commonngrams$ngram),"n"]))
+
+survey_tbl$cliche2 %>% hist(breaks = 50)
+```
+
 
 ```{r}
 attach(survey_tbl)
