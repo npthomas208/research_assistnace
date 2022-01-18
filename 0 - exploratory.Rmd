@@ -67,6 +67,8 @@ survey_tbl <- survey_tbl %>%
   select(-Year_born,-contains(c("Social_Desirability","PANAS","Believability_","vaccinate_","VaccinatiLikelihood","Cognitive_Attitude1_","Cognitive_Attitude2_","Affective_Attitude","Situationalreactanc","Vaccine_hesitancy1_","Vaccine_hesitancy2_","Attention_Alignment1","self_esteem_","Perci_Vulnerability4")))
 ```
 
+# Death Thoughts text quantification
+
 ## Start creating quantitaive text metrics
 
 ```{r}
@@ -79,28 +81,39 @@ survey_tbl <- survey_tbl %>% mutate(wordcount1 = (`Death Thoughts1` %>% str_spli
 ```
 
 ```{r}
+commonwords <- list()
+commonngrams <-  list()
+```
+
+```{r}
 #Most common words
-commonwords <- gsub("[[:punct:][:blank:]]+", " ", survey_tbl$`Death Thoughts1`) %>% tokenize_word() %>% unlist() %>% data_frame(word = .) %>% filter(word != " ") %>% count(word, sort=TRUE) 
+commonwords$`Death Thoughts1` <- gsub("[[:punct:][:blank:]]+", " ", survey_tbl$`Death Thoughts1`) %>% tokenize_word() %>% unlist() %>% data_frame(word = .) %>% filter(word != " ") %>% count(word, sort=TRUE) 
+commonwords$`Death Thoughts2` <- gsub("[[:punct:][:blank:]]+", " ", survey_tbl$`Death Thoughts2`) %>% tokenize_word() %>% unlist() %>% data_frame(word = .) %>% filter(word != " ") %>% count(word, sort=TRUE) 
 
 #Most common bi
-commonngrams <- tokenize_ngrams(gsub("[[:punct:][:blank:]]+", " ", survey_tbl$`Death Thoughts1`), n = 2L, n_min = 2L, simplify = TRUE) %>%
+commonngrams$`Death Thoughts1` <- tokenize_ngrams(gsub("[[:punct:][:blank:]]+", " ", survey_tbl$`Death Thoughts1`), n = 2L, n_min = 2L, simplify = TRUE) %>%
+  unlist() %>%
+  data_frame(ngram = .) %>%
+  drop_na %>%
+  count(ngram, sort = TRUE) 
+commonngrams$`Death Thoughts2` <- tokenize_ngrams(gsub("[[:punct:][:blank:]]+", " ", survey_tbl$`Death Thoughts2`), n = 2L, n_min = 2L, simplify = TRUE) %>%
   unlist() %>%
   data_frame(ngram = .) %>%
   drop_na %>%
   count(ngram, sort = TRUE) 
 
 survey_tbl <- survey_tbl %>%
-  mutate(cliche1 = sum(commonwords[str_detect(`Death Thoughts1`,commonwords$word),"n"])) #mask to find n
+  mutate(DT1_cliche1 = sum(commonwords$`Death Thoughts1`[str_detect(`Death Thoughts1`,commonwords$`Death Thoughts1`$word),"n"]),
+         DT2_cliche1 = sum(commonwords$`Death Thoughts2`[str_detect(`Death Thoughts2`,commonwords$`Death Thoughts2`$word),"n"]),
+         DT1_cliche2 = sum(commonngrams$`Death Thoughts1`[str_detect(`Death Thoughts1`,commonngrams$`Death Thoughts1`$ngram),"n"]),
+         DT2_cliche2 = sum(commonngrams$`Death Thoughts2`[str_detect(`Death Thoughts2`,commonngrams$`Death Thoughts2`$ngram),"n"])) 
 
-survey_tbl$cliche1 %>% hist()
+survey_tbl$DT1_cliche1 %>% hist()
+survey_tbl$DT2_cliche1 %>% hist()
+survey_tbl$DT1_cliche2 %>% hist(breaks = 50)
+survey_tbl$DT2_cliche2 %>% hist(breaks = 50)
 ```
 
-```{r}
-survey_tbl <- survey_tbl %>%
-  mutate(cliche2 = sum(commonngrams[str_detect(`Death Thoughts1`,commonngrams$ngram),"n"]))
-
-survey_tbl$cliche2 %>% hist(breaks = 50)
-```
 
 
 ```{r}
@@ -140,19 +153,6 @@ rbind(survey_tbl %>% select(-ID) %>%  select_if(is.numeric) %>% cor() %>% melt()
 survey_tbl %>% select(-ID) %>%  select_if(is.numeric) %>% cor() %>% melt() %>% filter(Var1 != Var2) %>% group_by(Var2) %>%
   top_n(-3)) %>% arrange(Var2, desc(value)) %>% select(Var2,Var1,value)
 ```
-
-Intentions_1	Attention_Alignment2	-0.29595146
-Intentions_1	If you could, how likely are you to do the following with this news headline? - Read the full article
-Attention_Alignment2	I do not support the position advocated in the news headline
-
-
-Self reported, more likely to read the full article if you also disagree with the statement that you do not support the position advocated within it.  ?Confirmation bias?
-
-Intentions_ all appear to be indicative of a desire to engage with the article is some social capacity.  Therefore, correlations are expected here.
-
-Intentions_2	reliable_believability	0.58744937
-If beleiveable more likely to share.
-
 
 
 
