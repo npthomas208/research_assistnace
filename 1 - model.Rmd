@@ -1,0 +1,22 @@
+---
+title: "1 - model"
+author: "Nate Thomas"
+date: "1/20/2022"
+output: html_document
+---
+
+```{r}
+slm <- lm(Intentions_2 ~ .,data = survey_tbl %>% select(-ID) %>% unique() %>% select_if(is.numeric) %>% replace(is.na(.),0))
+summary(slm)
+```
+
+```{r}
+shapiro.test(rstandard(slm))
+hist(rstandard(slm))
+plot(slm)
+```
+
+Residual normality fails...
+
+
+

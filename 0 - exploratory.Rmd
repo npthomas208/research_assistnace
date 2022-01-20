@@ -13,6 +13,9 @@ library(ggplot2)
 library(ggrepel)
 library(quanteda)
 library(tidytext)
+library(tm)
+library(textstem)
+library(textdata)
 library(tokenizers)
 library(stringr)
 ```
@@ -29,7 +32,7 @@ survey_tbl <- read_excel("./DT.xlsx", col_types = c(rep("guess",2),"date",rep("g
 survey_tbl <- survey_tbl %>% 
   mutate(control = ifelse(str_detect(Group,"Control"),1,0),
          condition_death = ifelse(str_detect(Group,"Death"),1,0),
-         condition_sm = ifelse(str_detect(Group,"Sm_"),1,0),
+         condition_socialmedia = ifelse(str_detect(Group,"SM_"),1,0),
          condition_socialloss = ifelse(str_detect(Group,"SocialLoss"),1,0))
 ```
 
@@ -67,17 +70,20 @@ survey_tbl <- survey_tbl %>%
   select(-Year_born,-contains(c("Social_Desirability","PANAS","Believability_","vaccinate_","VaccinatiLikelihood","Cognitive_Attitude1_","Cognitive_Attitude2_","Affective_Attitude","Situationalreactanc","Vaccine_hesitancy1_","Vaccine_hesitancy2_","Attention_Alignment1","self_esteem_","Perci_Vulnerability4")))
 ```
 
-# Death Thoughts text quantification
+# Death Thoughts
 
-## Start creating quantitaive text metrics
+## Creating quantitaive text metrics
 
 ```{r}
 #Indicator of 3 or more sentenses
-survey_tbl <- survey_tbl %>% mutate(sentences3_1 = ifelse(`Death Thoughts1` %>% str_split('[.!?]') %>% sapply(length)-1>=3,1,0),
-                                    sentences3_2 = ifelse(`Death Thoughts2` %>% str_split('[.!?]') %>% sapply(length)-1>=3,1,0))
+survey_tbl <- survey_tbl %>% mutate(DT1_sentences3 = ifelse(`Death Thoughts1` %>% str_split('[.!?]') %>% sapply(length)-1>=3,1,ifelse(is.na(`Death Thoughts1`),NA,0)),
+                                    DT1_sentencecount = ifelse(str_count(`Death Thoughts1`,'[.!?]')!=0 & !is.na(str_count(`Death Thoughts1`,'[.!?]')),str_count(`Death Thoughts1`,'[.!?]'),ifelse(is.na(`Death Thoughts1`),NA,1)),
+                                    DT2_sentences3 = ifelse(`Death Thoughts2` %>% str_split('[.!?]') %>% sapply(length)-1>=3,1,ifelse(is.na(`Death Thoughts2`),NA,0)),
+                                    DT2_sentencecount = ifelse(str_count(`Death Thoughts2`,'[.!?]')!=0 & !is.na(str_count(`Death Thoughts2`,'[.!?]')),str_count(`Death Thoughts2`,'[.!?]'),ifelse(is.na(`Death Thoughts2`),NA,1)))
+
 #Word count
-survey_tbl <- survey_tbl %>% mutate(wordcount1 = (`Death Thoughts1` %>% str_split('\\b') %>% sapply(length)-1)/2,
-                                    wordcount1 = (`Death Thoughts2` %>% str_split('\\b') %>% sapply(length)-1)/2)
+survey_tbl <- survey_tbl %>% mutate(DT1_wordcount = ifelse(is.na(`Death Thoughts1`),NA,(`Death Thoughts1` %>% str_split('\\b') %>% sapply(length)-1)/2),
+                                    DT2_wordcount = ifelse(is.na(`Death Thoughts2`),NA,(`Death Thoughts2` %>% str_split('\\b') %>% sapply(length)-1)/2))
 ```
 
 ```{r}
@@ -90,7 +96,7 @@ commonngrams <-  list()
 commonwords$`Death Thoughts1` <- gsub("[[:punct:][:blank:]]+", " ", survey_tbl$`Death Thoughts1`) %>% tokenize_word() %>% unlist() %>% data_frame(word = .) %>% filter(word != " ") %>% count(word, sort=TRUE) 
 commonwords$`Death Thoughts2` <- gsub("[[:punct:][:blank:]]+", " ", survey_tbl$`Death Thoughts2`) %>% tokenize_word() %>% unlist() %>% data_frame(word = .) %>% filter(word != " ") %>% count(word, sort=TRUE) 
 
-#Most common bi
+#Most common bigrams
 commonngrams$`Death Thoughts1` <- tokenize_ngrams(gsub("[[:punct:][:blank:]]+", " ", survey_tbl$`Death Thoughts1`), n = 2L, n_min = 2L, simplify = TRUE) %>%
   unlist() %>%
   data_frame(ngram = .) %>%
@@ -114,7 +120,153 @@ survey_tbl$DT1_cliche2 %>% hist(breaks = 50)
 survey_tbl$DT2_cliche2 %>% hist(breaks = 50)
 ```
 
+```{r}
+firstpersonsingular <- c("I", "me", "mine", "myself", "my")
 
+survey_tbl <- survey_tbl %>%
+  mutate(DT1_1stperson = sum(str_detect(`Death Thoughts1`,firstpersonsingular)),
+         DT1_1stperson_per_sentence = DT1_1stperson/DT1_sentencecount,
+         DT2_1stperson = sum(str_detect(`Death Thoughts2`,firstpersonsingular)),
+         DT2_1stperson_per_sentence = DT2_1stperson/DT2_sentencecount)
+```
+
+```{r}
+afinn <- function(s){
+  s = str_to_lower(s) 
+  return(gsub("[[:punct:]]+", " ", s) %>% 
+    removeWords(stop_words$word) %>%
+    lemmatize_strings() %>%
+    str_split(" ") %>% 
+    unlist() %>% data.frame(word = .) %>%
+    left_join(get_sentiments("afinn"), by = "word") %>% 
+    summarise(sentiment = sum(value, na.rm=TRUE)))
+}
+
+survey_tbl <- survey_tbl %>% 
+  mutate(DT1_afinn = ifelse(is.na(`Death Thoughts1`),NA,afinn(`Death Thoughts1`)$sentiment),
+         DT2_afinn = ifelse(is.na(`Death Thoughts2`),NA,afinn(`Death Thoughts2`)$sentiment))
+```
+
+# Social Media
+
+## Creating quantitaive text metrics
+
+```{r}
+survey_tbl <- survey_tbl %>% mutate(`Social Media Thoughts1` = `Pain Thoughts1`,
+                                    `Social Media Thoughts2` = `Pain Thoughts2`)
+
+#Indicator of 3 or more sentenses
+survey_tbl <- survey_tbl %>% mutate(SM1_sentences3 = ifelse(`Social Media Thoughts1` %>% str_split('[.!?]') %>% sapply(length)-1>=3,1,ifelse(is.na(`Social Media Thoughts1`),NA,0)),
+                                    SM1_sentencecount = ifelse(str_count(`Social Media Thoughts1`,'[.!?]')!=0 & !is.na(str_count(`Social Media Thoughts1`,'[.!?]')),str_count(`Social Media Thoughts1`,'[.!?]'),ifelse(is.na(`Social Media Thoughts1`),NA,1)),
+                                    SM2_sentences3 = ifelse(`Social Media Thoughts2` %>% str_split('[.!?]') %>% sapply(length)-1>=3,1,ifelse(is.na(`Social Media Thoughts2`),NA,0)),
+                                    SM2_sentencecount = ifelse(str_count(`Social Media Thoughts2`,'[.!?]')!=0 & !is.na(str_count(`Social Media Thoughts2`,'[.!?]')),str_count(`Social Media Thoughts2`,'[.!?]'),ifelse(is.na(`Social Media Thoughts2`),NA,1)))
+
+#Word count
+survey_tbl <- survey_tbl %>% mutate(SM1_wordcount = ifelse(is.na(`Social Media Thoughts1`),NA,(`Social Media Thoughts1` %>% str_split('\\b') %>% sapply(length)-1)/2),
+                                    SM2_wordcount = ifelse(is.na(`Social Media Thoughts2`),NA,(`Social Media Thoughts2` %>% str_split('\\b') %>% sapply(length)-1)/2))
+```
+
+```{r}
+#Most common words
+commonwords$`Social Media Thoughts1` <- gsub("[[:punct:][:blank:]]+", " ", survey_tbl$`Social Media Thoughts1`) %>% tokenize_word() %>% unlist() %>% data_frame(word = .) %>% filter(word != " ") %>% count(word, sort=TRUE) 
+commonwords$`Social Media Thoughts2` <- gsub("[[:punct:][:blank:]]+", " ", survey_tbl$`Social Media Thoughts2`) %>% tokenize_word() %>% unlist() %>% data_frame(word = .) %>% filter(word != " ") %>% count(word, sort=TRUE) 
+
+#Most common bigrams
+commonngrams$`Social Media Thoughts1` <- tokenize_ngrams(gsub("[[:punct:][:blank:]]+", " ", survey_tbl$`Social Media Thoughts1`), n = 2L, n_min = 2L, simplify = TRUE) %>%
+  unlist() %>%
+  data_frame(ngram = .) %>%
+  drop_na %>%
+  count(ngram, sort = TRUE) 
+commonngrams$`Social Media Thoughts2` <- tokenize_ngrams(gsub("[[:punct:][:blank:]]+", " ", survey_tbl$`Social Media Thoughts2`), n = 2L, n_min = 2L, simplify = TRUE) %>%
+  unlist() %>%
+  data_frame(ngram = .) %>%
+  drop_na %>%
+  count(ngram, sort = TRUE) 
+
+survey_tbl <- survey_tbl %>%
+  mutate(SM1_cliche1 = sum(commonwords$`Social Media Thoughts1`[str_detect(`Social Media Thoughts1`,commonwords$`Social Media Thoughts1`$word),"n"]),
+         SM2_cliche1 = sum(commonwords$`Social Media Thoughts2`[str_detect(`Social Media Thoughts2`,commonwords$`Social Media Thoughts2`$word),"n"]),
+         SM1_cliche2 = sum(commonngrams$`Social Media Thoughts1`[str_detect(`Social Media Thoughts1`,commonngrams$`Social Media Thoughts1`$ngram),"n"]),
+         SM2_cliche2 = sum(commonngrams$`Social Media Thoughts2`[str_detect(`Social Media Thoughts2`,commonngrams$`Social Media Thoughts2`$ngram),"n"])) 
+
+survey_tbl$SM1_cliche1 %>% hist()
+survey_tbl$SM2_cliche1 %>% hist()
+survey_tbl$SM1_cliche2 %>% hist(breaks = 50)
+survey_tbl$SM2_cliche2 %>% hist(breaks = 50)
+```
+
+```{r}
+survey_tbl <- survey_tbl %>%
+  mutate(SM1_1stperson = sum(str_detect(`Social Media Thoughts1`,firstpersonsingular)),
+         SM1_1stperson_per_sentence = SM1_1stperson/SM1_sentencecount,
+         SM2_1stperson = sum(str_detect(`Social Media Thoughts2`,firstpersonsingular)),
+         SM2_1stperson_per_sentence = SM2_1stperson/SM2_sentencecount)
+```
+
+```{r}
+survey_tbl <- survey_tbl %>% 
+  mutate(SM1_afinn = ifelse(is.na(`Social Media Thoughts1`),NA,afinn(`Social Media Thoughts1`)$sentiment),
+         SM2_afinn = ifelse(is.na(`Social Media Thoughts2`),NA,afinn(`Social Media Thoughts2`)$sentiment))
+```
+
+# Social Loss Thoughts
+
+## Creating quantitaive text metrics
+
+```{r}
+#Indicator of 3 or more sentenses
+survey_tbl <- survey_tbl %>% mutate(SL1_sentences3 = ifelse(`SocialLoss Thoughts1` %>% str_split('[.!?]') %>% sapply(length)-1>=3,1,ifelse(is.na(`SocialLoss Thoughts1`),NA,0)),
+                                    SL1_sentencecount = ifelse(str_count(`SocialLoss Thoughts1`,'[.!?]')!=0 & !is.na(str_count(`SocialLoss Thoughts1`,'[.!?]')),str_count(`SocialLoss Thoughts1`,'[.!?]'),ifelse(is.na(`SocialLoss Thoughts1`),NA,1)),
+                                    SL2_sentences3 = ifelse(`SocialLoss Thoughts2` %>% str_split('[.!?]') %>% sapply(length)-1>=3,1,ifelse(is.na(`SocialLoss Thoughts2`),NA,0)),
+                                    SL2_sentencecount = ifelse(str_count(`SocialLoss Thoughts2`,'[.!?]')!=0 & !is.na(str_count(`SocialLoss Thoughts2`,'[.!?]')),str_count(`SocialLoss Thoughts2`,'[.!?]'),ifelse(is.na(`SocialLoss Thoughts2`),NA,1)))
+
+#Word count
+survey_tbl <- survey_tbl %>% mutate(SL1_wordcount = ifelse(is.na(`SocialLoss Thoughts1`),NA,(`SocialLoss Thoughts1` %>% str_split('\\b') %>% sapply(length)-1)/2),
+                                    SL2_wordcount = ifelse(is.na(`SocialLoss Thoughts2`),NA,(`SocialLoss Thoughts2` %>% str_split('\\b') %>% sapply(length)-1)/2))
+```
+
+```{r}
+#Most common words
+commonwords$`SocialLoss Thoughts1` <- gsub("[[:punct:][:blank:]]+", " ", survey_tbl$`SocialLoss Thoughts1`) %>% tokenize_word() %>% unlist() %>% data_frame(word = .) %>% filter(word != " ") %>% count(word, sort=TRUE) 
+commonwords$`SocialLoss Thoughts2` <- gsub("[[:punct:][:blank:]]+", " ", survey_tbl$`SocialLoss Thoughts2`) %>% tokenize_word() %>% unlist() %>% data_frame(word = .) %>% filter(word != " ") %>% count(word, sort=TRUE) 
+
+#Most common bigrams
+commonngrams$`SocialLoss Thoughts1` <- tokenize_ngrams(gsub("[[:punct:][:blank:]]+", " ", survey_tbl$`SocialLoss Thoughts1`), n = 2L, n_min = 2L, simplify = TRUE) %>%
+  unlist() %>%
+  data_frame(ngram = .) %>%
+  drop_na %>%
+  count(ngram, sort = TRUE) 
+commonngrams$`SocialLoss Thoughts2` <- tokenize_ngrams(gsub("[[:punct:][:blank:]]+", " ", survey_tbl$`SocialLoss Thoughts2`), n = 2L, n_min = 2L, simplify = TRUE) %>%
+  unlist() %>%
+  data_frame(ngram = .) %>%
+  drop_na %>%
+  count(ngram, sort = TRUE) 
+
+survey_tbl <- survey_tbl %>%
+  mutate(SL1_cliche1 = sum(commonwords$`SocialLoss Thoughts1`[str_detect(`SocialLoss Thoughts1`,commonwords$`SocialLoss Thoughts1`$word),"n"]),
+         SL2_cliche1 = sum(commonwords$`SocialLoss Thoughts2`[str_detect(`SocialLoss Thoughts2`,commonwords$`SocialLoss Thoughts2`$word),"n"]),
+         SL1_cliche2 = sum(commonngrams$`SocialLoss Thoughts1`[str_detect(`SocialLoss Thoughts1`,commonngrams$`SocialLoss Thoughts1`$ngram),"n"]),
+         SL2_cliche2 = sum(commonngrams$`SocialLoss Thoughts2`[str_detect(`SocialLoss Thoughts2`,commonngrams$`SocialLoss Thoughts2`$ngram),"n"])) 
+
+survey_tbl$SL1_cliche1 %>% hist()
+survey_tbl$SL2_cliche1 %>% hist()
+survey_tbl$SL1_cliche2 %>% hist(breaks = 50)
+survey_tbl$SL2_cliche2 %>% hist(breaks = 50)
+```
+
+```{r}
+survey_tbl <- survey_tbl %>%
+  mutate(SL1_1stperson = sum(str_detect(`SocialLoss Thoughts1`,firstpersonsingular)),
+         SL1_1stperson_per_sentence = SL1_1stperson/SL1_sentencecount,
+         SL2_1stperson = sum(str_detect(`SocialLoss Thoughts2`,firstpersonsingular)),
+         SL2_1stperson_per_sentence = SL2_1stperson/SL2_sentencecount)
+```
+
+```{r}
+survey_tbl <- survey_tbl %>% 
+  mutate(SL1_afinn = ifelse(is.na(`SocialLoss Thoughts1`),NA,afinn(`SocialLoss Thoughts1`)$sentiment),
+         SL2_afinn = ifelse(is.na(`SocialLoss Thoughts2`),NA,afinn(`SocialLoss Thoughts2`)$sentiment))
+```
 
 ```{r}
 attach(survey_tbl)
@@ -129,29 +281,50 @@ cor(Share_Freq,Intentions_3) #share frequency, like article
 ```
 
 ```{r}
-survey_tbl %>% select(-ID) %>%  select_if(is.numeric) %>% cor() %>% melt() %>% 
-  ggplot(aes(Var1,Var2,fill=value)) + 
-  geom_tile() +
-  theme(axis.text.x = element_text(angle = 90))
-
-ggsave("correlation1.png", width=12)
-
-```
-
-```{r}
-survey_tbl %>% select(-ID) %>%  select_if(is.numeric) %>% cor() %>% melt() %>% drop_na() %>% 
-  ggplot(aes(Var1,Var2,fill=value)) + 
-  geom_tile() +
-  theme(axis.text.x = element_text(angle = 90))
-
-ggsave("correlation1 - without NA.png", width=12, height = 12)
-```
-
-```{r}
 rbind(survey_tbl %>% select(-ID) %>%  select_if(is.numeric) %>% cor() %>% melt() %>% filter(Var1 != Var2) %>% group_by(Var2) %>%
   top_n(3),
 survey_tbl %>% select(-ID) %>%  select_if(is.numeric) %>% cor() %>% melt() %>% filter(Var1 != Var2) %>% group_by(Var2) %>%
   top_n(-3)) %>% arrange(Var2, desc(value)) %>% select(Var2,Var1,value)
+```
+
+## Control Correlations
+
+```{r}
+survey_tbl %>% filter(control == 1) %>% select(-ID) %>% select_if(is.numeric) %>% cor() %>% melt() %>% filter(value !=1)  %>% 
+  ggplot(aes(Var1,Var2,fill=value)) + 
+  geom_tile() +
+  theme(axis.text.x = element_text(angle = 90))
+
+ggsave("correlation control - without NA.png", width=12, height = 12)
+```
+
+## Conditin Correlations
+
+```{r}
+survey_tbl %>% filter(condition_death == 1) %>% select(-ID) %>% select_if(is.numeric) %>% cor() %>% melt() %>% filter(value !=1)  %>% 
+  ggplot(aes(Var1,Var2,fill=value)) + 
+  geom_tile() +
+  theme(axis.text.x = element_text(angle = 90))
+
+ggsave("correlation death - without NA.png", width=12, height = 12)
+```
+
+```{r}
+survey_tbl %>% filter(condition_socialmedia == 1) %>% select(-ID) %>% select_if(is.numeric) %>% cor() %>% melt() %>% filter(value !=1)  %>% 
+  ggplot(aes(Var1,Var2,fill=value)) + 
+  geom_tile() +
+  theme(axis.text.x = element_text(angle = 90))
+
+ggsave("correlation social media - without NA.png", width=12, height = 12)
+```
+
+```{r}
+survey_tbl %>% filter(condition_socialloss == 1) %>% select(-ID) %>% select_if(is.numeric) %>% cor() %>% melt() %>% filter(value !=1)  %>% 
+  ggplot(aes(Var1,Var2,fill=value)) + 
+  geom_tile() +
+  theme(axis.text.x = element_text(angle = 90))
+
+ggsave("correlation social loss - without NA.png", width=12, height = 12)
 ```
 
 
