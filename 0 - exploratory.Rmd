@@ -340,5 +340,3 @@ ggsave("correlation social loss - without NA.png", width=12, height = 12)
 
 
 
-
-

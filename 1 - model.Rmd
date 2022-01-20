@@ -18,5 +18,19 @@ plot(slm)
 
 Residual normality fails...
 
+```{r}
+slm_summary <- summary(slm)
+slm_summary$coefficients
 
+slm_previous <- summary(slm)
+remove = c()
+for(i in 1:30){
+  slm_new <- lm(Intentions_2~.,data = survey_tbl %>% select(-ID) %>% unique() %>% select_if(is.numeric) %>% replace(is.na(.),0) %>% select(-remove))
+  slm_previous <- summary(slm_new)
+  remove <- append(remove,c(names(which(slm_previous$coefficients[,'Pr(>|t|)']>0.15))))
+  remove <- gsub('`','',remove)
+  remove <- remove[!remove %in% c('(Intercept)')]
+}
+slm_previous
+```
 
