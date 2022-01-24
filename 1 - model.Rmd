@@ -20,17 +20,56 @@ Residual normality fails...
 
 ```{r}
 slm_summary <- summary(slm)
-slm_summary$coefficients
-
 slm_previous <- summary(slm)
 remove = c()
-for(i in 1:30){
-  slm_new <- lm(Intentions_2~.,data = survey_tbl %>% select(-ID) %>% unique() %>% select_if(is.numeric) %>% replace(is.na(.),0) %>% select(-remove))
-  slm_previous <- summary(slm_new)
-  remove <- append(remove,c(names(which(slm_previous$coefficients[,'Pr(>|t|)']>0.15))))
-  remove <- gsub('`','',remove)
-  remove <- remove[!remove %in% c('(Intercept)')]
-}
-slm_previous
+
+linear_model_winnower <- function(tbl,slm_summary,slm_previous,remove,alpha){
+  for(i in 1:5){
+    df <- tbl %>% select(-c(ID,link2_clicked)) %>% unique() %>% select_if(is.numeric) %>% replace(is.na(.),0) %>% select(-remove)
+    print(paste("Parameters: ",length(colnames(df))+length(colnames(df))^2-1))
+    print(paste(dim(df)[1]))
+    if(length(colnames(df))+length(colnames(df))^2-1>dim(df)[1]){
+      slm_new <- lm(Intentions_2~.,data = df)
+    }
+    else{
+      slm_new <- lm(Intentions_2~.+.^2,data = df)
+    }
+    slm_previous <- summary(slm_new)
+    remove <- append(remove,c(names(which(slm_previous$coefficients[,'Pr(>|t|)']>alpha))))
+    remove <- gsub('`','',remove)
+    remove <- remove[!remove %in% c('(Intercept)')]
+    remove <- remove[!sapply(remove,str_detect,pattern=':')]
+  }
+  return(list(remove = remove,slm = slm_previous))
+  } 
+
+slm_winnowed <- linear_model_winnower(survey_tbl,slm_summary,slm_previous,remove,0.10)
+slm_winnowed
 ```
+
+## Removing other Intention_ variables from the analysis...
+
+```{r}
+slm_intent2_only <- lm(Intentions_2 ~ .,data = survey_tbl %>% select(-c(ID,Intentions_1,Intentions_3,Intentions_4,Intentions_5,Intentions_6)) %>% unique() %>% select_if(is.numeric) %>% replace(is.na(.),0))
+summary(slm_intent2_only)
+```
+
+```{r}
+slm_intent2_only_summary <- summary(slm_intent2_only)
+slm_intent2_only2_previous <- summary(slm_intent2_only)
+remove = c()
+df_slm_intent2_only <- survey_tbl %>% select(-c(Intentions_1,Intentions_3,Intentions_4,Intentions_5,Intentions_6)) 
+
+
+slm_intent2_only_winnowed <- linear_model_winnower(df_slm_intent2_only, slm_intent2_only_summary,slm_intent2_only2_previous,remove,alpha = 0.30)
+slm_intent2_only_winnowed
+```
+
+
+
+
+
+
+
+
 
