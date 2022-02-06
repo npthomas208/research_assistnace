@@ -23,7 +23,7 @@ library(stringr)
 ## Investigate
 
 ```{r}
-survey_tbl <- read_excel("./DT.xlsx", col_types = c(rep("guess",2),"date",rep("guess",119)))
+survey_tbl <- read_excel("./DT.xlsx", col_types = c(rep("guess",2),"date",rep("guess",135)))
 ```
 
 ## Create indicator variables for the Conditions 
@@ -34,6 +34,7 @@ survey_tbl <- survey_tbl %>%
          condition_death = ifelse(str_detect(Group,"Death"),1,0),
          condition_socialmedia = ifelse(str_detect(Group,"SM_"),1,0),
          condition_socialloss = ifelse(str_detect(Group,"SocialLoss"),1,0))
+
 ```
 
 ## Create indicator variables for the treatments
@@ -327,7 +328,9 @@ survey_tbl %>% filter(condition_socialloss == 1) %>% select(-ID) %>% select_if(i
 ggsave("correlation social loss - without NA.png", width=12, height = 12)
 ```
 
-
+```{r}
+survey_tbl.clean <- survey_tbl %>% select(-ID) %>% unique()
+```
 
 
 

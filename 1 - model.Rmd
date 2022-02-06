@@ -28,7 +28,7 @@ linear_model_winnower <- function(tbl,slm_summary,slm_previous,remove,alpha){
     df <- tbl %>% select(-c(ID,link2_clicked)) %>% unique() %>% select_if(is.numeric) %>% replace(is.na(.),0) %>% select(-remove)
     print(paste("Parameters: ",length(colnames(df))+length(colnames(df))^2-1))
     print(paste(dim(df)[1]))
-    if(length(colnames(df))+length(colnames(df))^2-1>dim(df)[1]){
+    if(length(colnames(df))+length(colnames(df))^2+1>dim(df)[1]){
       slm_new <- lm(Intentions_2~.,data = df)
     }
     else{

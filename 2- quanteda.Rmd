@@ -1,0 +1,118 @@
+---
+title: "2 - quanteda"
+author: "Nate Thomas"
+date: "1/26/2022"
+output: html_document
+---
+
+```{r}
+library(quanteda)
+library(car)
+```
+
+```{r}
+corp <- list()
+corp$DT1 <- corpus(survey_tbl.clean$`Death Thoughts1`)
+corp$DT2 <- corpus(survey_tbl.clean$`Death Thoughts2`)
+corp$SM1 <- corpus(survey_tbl.clean$`Social Media Thoughts1`)
+corp$SM2 <- corpus(survey_tbl.clean$`Social Media Thoughts2`)
+corp$SL1 <- corpus(survey_tbl.clean$`SocialLoss Thoughts1`)
+corp$SL2 <- corpus(survey_tbl.clean$`SocialLoss Thoughts2`)
+```
+
+Summarize the corpus:
+
+```{r}
+nsentence(corp$DT1)%>% cbind(survey_tbl.clean$DT1_sentencecount)
+
+survey_tbl.clean$DT1_sentencecount <- corp$DT1 %>% nsentence()
+survey_tbl.clean$DT2_sentencecount <- corp$DT2 %>% nsentence()
+survey_tbl.clean$SM1_sentencecount <- corp$SM1 %>% nsentence()
+survey_tbl.clean$SM2_sentencecount <- corp$SM2 %>% nsentence()
+survey_tbl.clean$SL1_sentencecount <- corp$SL1 %>% nsentence()
+survey_tbl.clean$SL2_sentencecount <- corp$SL2 %>% nsentence()
+```
+
+Key word in context:
+
+```{r}
+kwic(corp$DT1, pattern = "terror")
+```
+
+```{r}
+# this converts the text to tokens, then creates a document feature matrix, then reduces the sparsity using feature frequency across all documents. This keeps only the most frequent words used.
+quanteda.tok <- function(corp){
+  quanteda::tokens(corp) %>%
+    dfm(remove = stopwords("english"),
+    stem = TRUE, remove_punct = TRUE) %>%
+    dfm_trim(min_termfreq = 0.95, termfreq_type = "quantile")
+}
+
+corp$DT1_tokens <- quanteda.tok(corp$DT1)
+corp$DT2_tokens <- quanteda.tok(corp$DT2)
+corp$SM1_tokens <- quanteda.tok(corp$SM1)
+corp$SM2_tokens <- quanteda.tok(corp$SM2)
+corp$SL1_tokens <- quanteda.tok(corp$SL1)
+corp$SL2_tokens <- quanteda.tok(corp$SL2)
+
+colnames(corp$DT1_tokens) <- paste('DT1_word',corp$DT1_tokens %>% colnames() %>% str_trim(),sep='')
+colnames(corp$DT2_tokens) <- paste('DT2_word',corp$DT2_tokens %>% colnames() %>% str_trim(),sep='')
+```
+
+```{r}
+survey_tbl.clean.DT <- cbind(survey_tbl.clean,convert(corp$DT1_tokens, to = "data.frame"))
+survey_tbl.clean.DT <- cbind(survey_tbl.clean.DT,convert(corp$DT2_tokens, to = "data.frame"))
+
+survey_tbl.clean.DT.model <- survey_tbl.clean.DT %>% 
+  select(Intentions_2, Gender, Age_Years, Employment, Income, Education, link1_clicked,control,condition_death,treatment_prevention,treatment_loved,treatment_others,contains(c('DT1_','DT2_'))) %>%
+  filter(control == 1 | condition_death == 1) %>%
+  select(-contains(c('condition_social','treatment_promotion','treatment_own'))) %>%
+  select_if(is.numeric) %>%
+  replace(is.na(.),0)
+
+DT <- list()
+DT$model <- lm(Intentions_2~., data= survey_tbl.clean.DT.model)
+DT$summary <- summary(DT$model)
+
+DT$vif <- vif(DT$model)
+
+model_winnower <- function(tbl,slm_summary,vif,iter){
+  slm_previous = slm_summary
+  remove = c()
+  for(i in 1:iter){
+    df <- tbl %>% select(-remove)
+    if(length(colnames(df))+length(colnames(df))^2+1>dim(df)[1]){
+      slm_new <- lm(Intentions_2~.,data = df)
+    }
+    else{
+      slm_new <- lm(Intentions_2~.+.^2,data = df)
+    }
+    slm_previous <- summary(slm_new)
+    remove <- append(remove,c(ifelse(max(vif(slm_new))>vif,names(which.max(vif(slm_new))),break)))
+    print(remove)
+    remove <- gsub('`','',remove)
+    remove <- remove[!sapply(remove,str_detect,pattern=':')]
+  }
+  return(list(remove = remove,slm = slm_previous,vif(slm_new)))
+  } 
+
+updated_model <- model_winnower(survey_tbl.clean.DT.model, DT$summary, vif = 5, iter = 30)
+updated_model$slm
+```
+
+What are the number of words? Are there clusters of words? ngrams?
+
+```{r}
+survey_tbl.clean.DT.model %>% dim()
+survey_tbl.clean.DT.model %>% filter(condition_death == 1) %>% select(contains('famili')) %>% sum()                          
+```
+
+```{r}
+survey_tbl_complete <- read_excel("./DT_complete.xlsx", col_types = c(rep("guess",2),"date",rep("guess",137)))
+```
+```
+
+
+
+
+
